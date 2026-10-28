@@ -1,3 +1,5 @@
+import hmac
+import html
 import os
 import sqlite3
 from datetime import timedelta
@@ -119,6 +121,38 @@ def me():
     if user is None:
         return jsonify({"error": "User not found"}), 404
     return jsonify(dict(user))
+
+
+@app.route("/admin/users")
+def admin_users():
+    # Private page. Open it as: /admin/users?key=YOUR_ADMIN_KEY
+    # If ADMIN_KEY is not set on the server, this page stays locked.
+    admin_key = os.environ.get("ADMIN_KEY", "")
+    given = request.args.get("key", "")
+    if not admin_key or not hmac.compare_digest(given.encode(), admin_key.encode()):
+        return jsonify({"error": "Not allowed"}), 403
+
+    conn = get_db()
+    users = conn.execute(
+        "SELECT id, name, email, created_at FROM users ORDER BY id"
+    ).fetchall()
+    conn.close()
+
+    rows = "".join(
+        "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+            u["id"], html.escape(u["name"]), html.escape(u["email"]), u["created_at"]
+        )
+        for u in users
+    )
+    return (
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<body style='font-family:sans-serif;padding:12px'>"
+        "<h2>Registered users ({})</h2>"
+        "<div style='overflow-x:auto'>"
+        "<table border='1' cellpadding='8' style='border-collapse:collapse'>"
+        "<tr><th>ID</th><th>Name</th><th>Email</th><th>Joined (UTC)</th></tr>{}"
+        "</table></div></body>"
+    ).format(len(users), rows)
 
 
 if __name__ == "__main__":
